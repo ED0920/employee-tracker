@@ -1,10 +1,5 @@
-const express = require("express");
 const inquirer = require("inquirer");
 const mysql = require("mysql2/promise");
-
-// express middleware
-const PORT = process.env.PORT || 3002;
-const app = express();
 
 const run = async () => {
   // connect to database
@@ -115,9 +110,17 @@ const run = async () => {
     ];
     const res = await inquirer.prompt(addEmployee);
 
+    const roleId = roleQuery[0].find((role) => {
+      return role.title === res.role;
+    }).id;
+
+    const managerId = managerQuery[0].find((manager) => {
+      return manager.first_name + " " + manager.last_name === res.manager;
+    }).id;
+
     await db.query(
       "INSERT INTO employee (first_name, last_name, role_id, manager_id) VALUES (?,?,?,?)",
-      [res.first_name, res.last_name, res.role_id, res.manager_id]
+      [res.first_name, res.last_name, roleId, managerId]
     );
     console.log(res);
     mainMenuPrompt();
@@ -179,7 +182,13 @@ const run = async () => {
         mainMenuPrompt();
       } else if (response.menu === "View all employees") {
         console.log("List of employees");
-        const res = await db.query("SELECT * FROM employee");
+        const query = `
+        SELECT e1.first_name AS 'first name', e1.last_name AS 'last name', CONCAT(e2.first_name, " ", e2.last_name) AS 'manager name', r.title AS title, r.salary AS salary
+        FROM employee e1
+        JOIN employee e2 on e1.manager_id = e2.id
+        JOIN roles r on e1.role_id = r.id
+        `;
+        const res = await db.query(query);
         console.table(res[0]);
         mainMenuPrompt();
       } else if (response.menu === "Add departments") {
@@ -189,7 +198,7 @@ const run = async () => {
             [res.department]
             // fetch departments list
           );
-          console.log(response);
+          console.log("added to department");
           mainMenuPrompt();
 
           //add to department table
