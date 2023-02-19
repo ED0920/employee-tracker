@@ -1,9 +1,5 @@
 const express = require("express");
-// inquire prompt
 const inquirer = require("inquirer");
-const { default: Choice } = require("inquirer/lib/objects/choice");
-
-// import and reuqire mysql2
 const mysql = require("mysql2/promise");
 
 // express middleware
@@ -15,10 +11,9 @@ const run = async () => {
   const db = await mysql.createConnection({
     host: "localhost",
     user: "root",
-    password: "Baleful12!",
+    password: "",
     database: "employee_db",
   });
-
   console.log("Connected to the employee_db database.");
 
   const menu = [
@@ -45,91 +40,128 @@ const run = async () => {
       message: "What is the name of the department?",
     },
   ];
-  const addRole = [
-    {
-      type: "input",
-      name: "role ",
-      message: "What is the name of the role?",
-    },
-    {
-      type: "input",
-      name: "salary",
-      message: "what is the salary of the role? ",
-    },
-    {
-      type: "list",
-      name: "department",
-      message: "what department does the role belong to?",
-      choice: ["Engineering", " Finance", " Legal", "Sales"],
-    },
-  ];
 
-  const addEmployee = [
-    {
-      type: "input",
-      name: "first_name",
-      message: "What is the employee's first name?",
-    },
-    {
-      type: "input",
-      name: "last_name",
-      message: "What is the employee's last name?",
-    },
-    {
-      type: "list",
-      name: "role",
-      message: "What is the employee's role?",
-      choice: [
-        "Sales Lead",
-        "Salesperson",
-        "Lead Engineer",
-        "Software Engineer",
-        "Account Manager",
-        "Accountant",
-        "Legal Team Lead",
-        "Lawyer",
-      ],
-    },
-    {
-      type: "list",
-      name: "manager",
-      message: "Who is the employee's manager?",
-      choice: ["insert manager list"],
-    },
-  ];
+  const addRole = async () => {
+    const departmentQuery = await db.query("SELECT * from department");
+
+    const deptNames = departmentQuery[0].map((dept) => dept.department);
+
+    const questions = [
+      {
+        type: "input",
+        name: "role",
+        message: "What is the name of the role?",
+      },
+      {
+        type: "input",
+        name: "salary",
+        message: "what is the salary of the role? ",
+      },
+      {
+        type: "list",
+        name: "department",
+        message: "what department does the role belong to?",
+        choices: deptNames,
+      },
+    ];
+
+    const res = await inquirer.prompt(questions);
+
+    const departmentId = departmentQuery[0].find(
+      (dept) => dept.department === res.department
+    ).id;
+
+    await db.query(
+      "INSERT INTO roles (title, salary, department_id) VALUES (?,?,?)",
+      [res.role, res.salary, departmentId]
+    );
+    console.log("adding role");
+    mainMenuPrompt();
+  };
+
+  const addEmployee = async () => {
+    const roleQuery = await db.query("SELECT * from roles");
+    const roleNames = roleQuery[0].map((roleName) => roleName.title);
+    const managerQuery = await db.query(
+      "SELECT * FROM employee WHERE manager_id IS NOT NULL"
+    );
+    const managerNames = managerQuery[0].map(
+      (manager) => manager.first_name + " " + manager.last_name
+    );
+
+    const addEmployee = [
+      {
+        type: "input",
+        name: "first_name",
+        message: "What is the employee's first name?",
+      },
+      {
+        type: "input",
+        name: "last_name",
+        message: "What is the employee's last name?",
+      },
+      {
+        type: "list",
+        name: "role",
+        message: "What is the employee's role?",
+        choices: roleNames,
+      },
+      {
+        type: "list",
+        name: "manager",
+        message: "Who is the employee's manager?",
+        choices: managerNames,
+      },
+    ];
+    const res = await inquirer.prompt(addEmployee);
+
+    await db.query(
+      "INSERT INTO employee (first_name, last_name, role_id, manager_id) VALUES (?,?,?,?)",
+      [res.first_name, res.last_name, res.role_id, res.manager_id]
+    );
+    console.log(res);
+    mainMenuPrompt();
+  };
 
   const updateRole = async () => {
     // TODO fetch list of users and list of roles
     const userArray = await db.query("SELECT * FROM employee");
     const roleArray = await db.query("SELECT * FROM roles");
-
-    console.log(userArray);
-    console.log(roleArray);
+    const userNames = userArray[0].map(
+      (user) => user.first_name + " " + user.last_name
+    );
+    const roleName = roleArray[0].map((role) => role.title);
 
     const questions = [
       {
         type: "list",
         name: "employee",
         message: "Which employee's role do you want to update?",
-        choice: [userArray],
+        choices: userNames,
       },
       {
         type: "list",
         name: "role",
-        message: "Which role do you want to assign the elected employee?",
-        choice: [roleArray],
+        message: "Which role do you want to assign the selected employee?",
+        choices: roleName,
       },
     ];
 
-    inquirer.prompt(questions).then(async (response) => {
-      // const name = response.addEmployee
-      // const role = response.role
-      await db.query("UPDATE employee SET role_id = ? WHERE id = ?", [
-        "role_id",
-        "id",
-      ]);
-      //
-    });
+    const res = await inquirer.prompt(questions);
+
+    const userId = userArray[0].find((user) => {
+      return user.first_name + " " + user.last_name === res.employee;
+    }).id;
+
+    const roleId = roleArray[0].find((role) => {
+      return role.title === res.role;
+    }).id;
+
+    await db.query("UPDATE employee SET role_id = ? WHERE id = ?", [
+      userId,
+      roleId,
+    ]);
+    mainMenuPrompt();
   };
 
   const mainMenuPrompt = () => {
@@ -139,22 +171,23 @@ const run = async () => {
       if (response.menu === "View all departments") {
         console.log("list of departments");
         const res = await db.query("SELECT * FROM department");
-        console.log(res);
+        console.table(res[0]);
         mainMenuPrompt();
       } else if (response.menu === "View all roles") {
         const res = await db.query("SELECT * FROM roles");
-        console.log(res);
+        console.table(res[0]);
         mainMenuPrompt();
       } else if (response.menu === "View all employees") {
         console.log("List of employees");
         const res = await db.query("SELECT * FROM employee");
-        console.log(res);
+        console.table(res[0]);
         mainMenuPrompt();
       } else if (response.menu === "Add departments") {
         inquirer.prompt(addDepartment).then(async (res) => {
           const response = await db.query(
             "INSERT INTO department( department) VALUES (?)",
             [res.department]
+            // fetch departments list
           );
           console.log(response);
           mainMenuPrompt();
@@ -163,47 +196,16 @@ const run = async () => {
         });
         // console.log("department added");
       } else if (response.menu === "Add a role") {
-        inquirer.prompt(addRole).then(async (res) => {
-          //add to role table
-          const response = await db.query(
-            "INSERT INTO roles (title, salary, department_id) VALUES (?)",
-            [res.title, res.salary, res.department_id]
-          );
-          console.log("adding role");
-        });
+        addRole();
       } else if (response.menu === "Add an employee") {
-        inquirer.prompt(addEmployee).then(async (res) => {
-          //add to employee table
-          const response = await db.query(
-            "INSERT INTO employee (first_name, last_name, role_id, manager_id) VALUES (?)",
-            [res.first_name, res.last_name, res.role_id, res.manager_id]
-          );
-          console.log("adding employee");
-        });
+        addEmployee();
       } else if (response.menu === "Update an employee role") {
-        const promptQuestions = updateRole();
-
-        console.log("updaitng role");
+        updateRole();
       }
     });
   };
 
   mainMenuPrompt();
-
-  // funciton listManagers(to list managers in data)
-  // function update employee manager
-  // function view employees by manger
-  // function view employees by department
-  // function delete departments, roles & employees
-
-  // // TODO: Create a function to write README file
-  // function writeToFile(fileName, data) {}
-
-  // // TODO: Create a function to initialize app
-  // function init() {}
-
-  // // Function call to initialize app
-  // init();
 };
 
 run();
